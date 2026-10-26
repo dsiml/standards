@@ -57,7 +57,14 @@ sont mises de côté, et seul le code nouveau ou modifié doit être propre :
 
 - ESLint : `npx eslint . --suppress-all` crée `eslint-suppressions.json`. Le
   fichier est versionné et ne doit que diminuer : `npx eslint . --prune-suppressions`
-  retire les entrées corrigées.
+  retire les entrées corrigées. ESLint le réécrit dans son propre format : on
+  l'ajoute au `.prettierignore`.
+- Les avertissements ne sont pas mis de côté (seules les erreurs le sont), et
+  la CI n'en tolère aucun. On les corrige, ou on les désactive ligne par ligne
+  avec la raison : `// eslint-disable-next-line react-hooks/exhaustive-deps -- <raison>`.
+- Dans le fichier mis de côté, `no-floating-promises` et
+  `react-hooks/rules-of-hooks` signalent en général de vrais bugs : ce sont les
+  premières entrées à corriger.
 - Ruff : `uv run ruff check --add-noqa` ajoute un `# noqa` sur chaque ligne en
   erreur.
 

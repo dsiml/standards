@@ -27,7 +27,9 @@ npm install --save-dev eslint@9 prettier typescript @dsiml/eslint-config @dsiml/
 2. Ajouter les scripts `format:check`, `lint`, `typecheck`, `test` et `build`
    (voir [le contrat de CI](CONVENTIONS.md#intégration-continue)).
 3. Mettre de côté les erreurs existantes : `npx eslint . --suppress-all`, puis
-   versionner `eslint-suppressions.json`.
+   versionner `eslint-suppressions.json` et l'ajouter au `.prettierignore`. Les
+   avertissements restants se corrigent ou se désactivent ligne par ligne (voir
+   [Code existant](CONVENTIONS.md#code-existant)).
 4. Copier [templates/node/ci.yml](templates/node/ci.yml) dans
    `.github/workflows/ci.yml` et l'adapter (versions de Node, base de données,
    déploiement).
