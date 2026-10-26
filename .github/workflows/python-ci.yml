@@ -68,8 +68,8 @@ jobs:
         with:
           persist-credentials: false
 
-      # Exact version: setup-uv publishes no floating major tag.
-      - uses: astral-sh/setup-uv@v10.3.2
+      # Third-party actions are pinned to a commit; Dependabot keeps them current.
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           enable-cache: true
           python-version: ${{ inputs.python-version }}
