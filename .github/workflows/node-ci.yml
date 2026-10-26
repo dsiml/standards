@@ -5,7 +5,11 @@ name: Node CI
 # project adapts the CI by its scripts (and their `pre` hooks), not by forking
 # this workflow.
 #
-#   format:check → lint → typecheck → test:coverage (or test) → build
+#   format:check → lint → typecheck → [before-test] → test:coverage (or test)
+#   → build → [after-build]
+#
+# `before-test` and `after-build` hold what only the CI does and would slow
+# down a local hook: database migrations, a smoke test of the build.
 
 on:
   workflow_call:
@@ -28,6 +32,14 @@ on:
         description: >-
           KEY=value lines exported to every step. Dummy values only: this is
           not a secret store.
+        type: string
+        default: ''
+      before-test:
+        description: Shell command run right before the tests, e.g. `npm run db:deploy`.
+        type: string
+        default: ''
+      after-build:
+        description: Shell command run after the build, e.g. a smoke test.
         type: string
         default: ''
 
@@ -99,6 +111,12 @@ jobs:
       - name: Type check
         run: npm run --if-present typecheck
 
+      - name: Prepare the tests
+        if: inputs.before-test != ''
+        env:
+          COMMAND: ${{ inputs.before-test }}
+        run: bash -e -c "$COMMAND"
+
       - name: Test
         run: |
           if [ "$(npm pkg get scripts.test:coverage)" != '{}' ]; then
@@ -110,12 +128,21 @@ jobs:
       - name: Build
         run: npm run --if-present build
 
-      - name: Upload the coverage report
+      - name: Check the build
+        if: inputs.after-build != ''
+        env:
+          COMMAND: ${{ inputs.after-build }}
+        run: bash -e -c "$COMMAND"
+
+      # Every workspace's report, in a monorepo.
+      - name: Upload the coverage reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: coverage-node-${{ strategy.job-index }}
-          path: ${{ inputs.working-directory }}/coverage/lcov.info
+          path: |
+            ${{ inputs.working-directory }}/**/coverage/lcov.info
+            !**/node_modules/**
           if-no-files-found: ignore
 
   # A single, stable check name for branch rulesets, whatever the matrix.
