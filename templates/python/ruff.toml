@@ -21,9 +21,14 @@ select = [
 # Line length is the formatter's job.
 ignore = ["E501"]
 
+# French typography in user-facing strings: apostrophe, no-break spaces.
+allowed-confusables = ["\u2019", "\u00a0", "\u202f"]
+
 [lint.mccabe]
+# An app factory (FastAPI `create_app`) counts the branches of the route
+# handlers it nests: declare routes on a module-level APIRouter instead.
 max-complexity = 10
 
 [lint.per-file-ignores]
-# `assert` is how pytest checks.
-"tests/**" = ["S101"]
+# `assert` is how pytest checks; fake credentials are test data.
+"tests/**" = ["S101", "S105", "S106"]
