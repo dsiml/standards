@@ -1,0 +1,42 @@
+name: Coolify deploy
+
+# Reusable trigger of a Coolify deployment. The caller passes `secrets:
+# inherit`; COOLIFY_TOKEN and COOLIFY_WEBHOOK are read from the GitHub
+# environment named by `environment`, so staging and production keep
+# separate credentials and production can be restricted to `main` or tags.
+#
+# COOLIFY_WEBHOOK is the resource's deploy URL, as shown in Coolify:
+# https://<coolify>/api/v1/deploy?uuid=<resource uuid>&force=false
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub environment holding the Coolify credentials.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ inputs.environment }}
+
+    # One deployment at a time per environment, never cancelled halfway.
+    concurrency:
+      group: deploy-${{ github.repository }}-${{ inputs.environment }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Trigger the deployment
+        env:
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COOLIFY_WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK }}
+        run: |
+          curl --fail-with-body --silent --show-error --max-time 60 \
+            --header "Authorization: Bearer $COOLIFY_TOKEN" \
+            "$COOLIFY_WEBHOOK"

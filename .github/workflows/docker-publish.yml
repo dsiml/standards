@@ -1,0 +1,98 @@
+name: Docker publish
+
+# Reusable build and push of an image to GHCR. Every image is tagged
+# `sha-<12 chars>`; a push to main adds `:main` (what staging runs), a
+# `vX.Y.Z` tag adds `:X.Y.Z` and `:latest` (what production runs).
+# The caller job must grant `packages: write`.
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: 'Image name. Empty: ghcr.io/<owner>/<repository>.'
+        type: string
+        default: ''
+      context:
+        description: Build context.
+        type: string
+        default: .
+      file:
+        description: 'Dockerfile path. Empty: <context>/Dockerfile.'
+        type: string
+        default: ''
+      target:
+        description: 'Build stage. Empty: the last stage.'
+        type: string
+        default: ''
+    outputs:
+      image:
+        description: Image name, without tag.
+        value: ${{ jobs.publish.outputs.image }}
+      tag:
+        description: The `sha-<12 chars>` tag that was pushed.
+        value: ${{ jobs.publish.outputs.tag }}
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image: ${{ steps.name.outputs.image }}
+      tag: ${{ steps.name.outputs.tag }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Name the image
+        id: name
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: |
+          echo "image=${IMAGE:-ghcr.io/${GITHUB_REPOSITORY,,}}" >> "$GITHUB_OUTPUT"
+          echo "tag=sha-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/metadata-action@v6
+        id: meta
+        with:
+          images: ${{ steps.name.outputs.image }}
+          tags: |
+            type=raw,value=${{ steps.name.outputs.tag }}
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.file }}
+          target: ${{ inputs.target }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ inputs.target || 'default' }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.target || 'default' }}
+
+      - name: Summarise
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          TAG: ${{ steps.name.outputs.tag }}
+        run: |
+          echo "Image published: \`$IMAGE:$TAG\`" >> "$GITHUB_STEP_SUMMARY"

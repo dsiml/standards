@@ -1,0 +1,131 @@
+name: Node CI
+
+# Reusable verification of a Node project. The contract is the project's
+# package.json: each step runs the matching script when it exists, so a
+# project adapts the CI by its scripts (and their `pre` hooks), not by forking
+# this workflow.
+#
+#   format:check → lint → typecheck → test:coverage (or test) → build
+
+on:
+  workflow_call:
+    inputs:
+      node-versions:
+        description: JSON array of Node versions, run as a matrix.
+        type: string
+        default: '["lts/*"]'
+      working-directory:
+        description: Directory holding the package.json and package-lock.json.
+        type: string
+        default: .
+      postgres-image:
+        description: >-
+          Postgres image started as a service (database, user and password
+          `ci`, port 5432). Empty: no database.
+        type: string
+        default: ''
+      env:
+        description: >-
+          KEY=value lines exported to every step. Dummy values only: this is
+          not a secret store.
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ${{ fromJSON(inputs.node-versions) }}
+
+    services:
+      postgres:
+        # An empty image skips the service.
+        image: ${{ inputs.postgres-image }}
+        env:
+          POSTGRES_DB: ci
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    env:
+      # Same rendering as on a workstation, so a colour-sensitive test cannot
+      # only fail locally.
+      FORCE_COLOR: '3'
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: Export the project environment
+        if: inputs.env != ''
+        env:
+          PROJECT_ENV: ${{ inputs.env }}
+        run: printf '%s\n' "$PROJECT_ENV" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check formatting
+        run: npm run --if-present format:check
+
+      - name: Lint
+        run: npm run --if-present lint
+
+      - name: Type check
+        run: npm run --if-present typecheck
+
+      - name: Test
+        run: |
+          if [ "$(npm pkg get scripts.test:coverage)" != '{}' ]; then
+            npm run test:coverage
+          else
+            npm run --if-present test
+          fi
+
+      - name: Build
+        run: npm run --if-present build
+
+      - name: Upload the coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-node-${{ strategy.job-index }}
+          path: ${{ inputs.working-directory }}/coverage/lcov.info
+          if-no-files-found: ignore
+
+  # A single, stable check name for branch rulesets, whatever the matrix.
+  result:
+    name: Result
+    if: always()
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every verification to pass
+        env:
+          RESULT: ${{ needs.verify.result }}
+        run: test "$RESULT" = success

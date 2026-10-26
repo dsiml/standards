@@ -1,0 +1,110 @@
+name: Python CI
+
+# Reusable verification of a uv project. Ruff, mypy and pytest are expected in
+# the project's `dev` dependency group, so the CI runs the versions the lock
+# file pins, the same ones as on a workstation.
+#
+#   ruff format --check → ruff check → mypy → pytest
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: 'Python version. Empty: uv reads .python-version or requires-python.'
+        type: string
+        default: ''
+      working-directory:
+        description: Directory holding the pyproject.toml and uv.lock.
+        type: string
+        default: .
+      typecheck:
+        description: Run mypy.
+        type: boolean
+        default: true
+      postgres-image:
+        description: >-
+          Postgres image started as a service (database, user and password
+          `ci`, port 5432). Empty: no database.
+        type: string
+        default: ''
+      env:
+        description: >-
+          KEY=value lines exported to every step. Dummy values only: this is
+          not a secret store.
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        # An empty image skips the service.
+        image: ${{ inputs.postgres-image }}
+        env:
+          POSTGRES_DB: ci
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Exact version: setup-uv publishes no floating major tag.
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          enable-cache: true
+          python-version: ${{ inputs.python-version }}
+          working-directory: ${{ inputs.working-directory }}
+
+      - name: Export the project environment
+        if: inputs.env != ''
+        env:
+          PROJECT_ENV: ${{ inputs.env }}
+        run: printf '%s\n' "$PROJECT_ENV" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Check formatting
+        run: uv run ruff format --check
+
+      - name: Lint
+        run: uv run ruff check --output-format=github
+
+      - name: Type check
+        if: inputs.typecheck
+        run: uv run mypy .
+
+      - name: Test
+        run: uv run pytest
+
+  # A single, stable check name for branch rulesets.
+  result:
+    name: Result
+    if: always()
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the verification to pass
+        env:
+          RESULT: ${{ needs.verify.result }}
+        run: test "$RESULT" = success

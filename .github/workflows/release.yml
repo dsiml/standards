@@ -1,0 +1,58 @@
+name: Release
+
+# Publishes one package to npm when its tag is pushed:
+#   eslint-config-v1.2.0   → @dsiml/eslint-config@1.2.0
+#   prettier-config-v1.0.1 → @dsiml/prettier-config@1.0.1
+#
+# Publication goes through npm trusted publishing (OIDC): no npm token is
+# stored in GitHub. Each package must have this workflow declared as its
+# trusted publisher on npmjs.com.
+
+on:
+  push:
+    tags:
+      - 'eslint-config-v*'
+      - 'prettier-config-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    uses: ./.github/workflows/node-ci.yml
+
+  publish:
+    name: Publish to npm
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          registry-url: https://registry.npmjs.org
+
+      - name: Match the tag with the package version
+        id: package
+        run: |
+          name="${GITHUB_REF_NAME%-v*}"
+          version="${GITHUB_REF_NAME##*-v}"
+          actual="$(npm pkg get version --workspace "packages/$name" | jq -r 'first(.[])')"
+          if [ "$actual" != "$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match packages/$name version $actual"
+            exit 1
+          fi
+          echo "directory=packages/$name" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        working-directory: ${{ steps.package.outputs.directory }}
+        run: npm publish

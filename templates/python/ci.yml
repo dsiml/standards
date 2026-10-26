@@ -1,0 +1,53 @@
+name: CI
+
+# Pull request: verification only.
+# main:          verification, image `:main`, deployment to staging.
+# Tag vX.Y.Z:    verification, images `:X.Y.Z` and `:latest`, deployment to production.
+#
+# A project that is not deployed keeps the `ci` job only.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: dsiml/standards/.github/workflows/python-ci.yml@v1
+    # with:
+    #   postgres-image: postgres:17-alpine
+    #   env: |
+    #     DATABASE_URL=postgresql+psycopg://ci:ci@localhost:5432/ci
+
+  image:
+    needs: ci
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    uses: dsiml/standards/.github/workflows/docker-publish.yml@v1
+
+  staging:
+    needs: image
+    if: github.ref == 'refs/heads/main'
+    uses: dsiml/standards/.github/workflows/coolify-deploy.yml@v1
+    with:
+      environment: staging
+    secrets: inherit
+
+  production:
+    needs: image
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: dsiml/standards/.github/workflows/coolify-deploy.yml@v1
+    with:
+      environment: production
+    secrets: inherit

@@ -1,0 +1,29 @@
+# DSIML Ruff configuration: copy this file to the project root.
+# The target Python version is read from `requires-python` in pyproject.toml.
+
+[lint]
+select = [
+	"E",     # pycodestyle errors
+	"W",     # pycodestyle warnings
+	"F",     # pyflakes
+	"I",     # import order
+	"B",     # likely bugs
+	"UP",    # syntax of the targeted Python version
+	"SIM",   # simplifications
+	"C4",    # comprehensions
+	"N",     # naming
+	"S",     # security
+	"PT",    # pytest style
+	"ASYNC", # blocking calls in async code
+	"C90",   # complexity
+	"RUF",   # Ruff-specific
+]
+# Line length is the formatter's job.
+ignore = ["E501"]
+
+[lint.mccabe]
+max-complexity = 10
+
+[lint.per-file-ignores]
+# `assert` is how pytest checks.
+"tests/**" = ["S101"]
